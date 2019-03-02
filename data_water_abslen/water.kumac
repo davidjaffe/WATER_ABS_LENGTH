@@ -1,0 +1,552 @@
+macro compare
+on error goto DONE
+
+*** 23jul08 compare legacy and nuwa absorption length vs
+*** photon momentum and wavelength
+
+n = 314
+feV = legev.vec
+fabsl = legabsl.vec
+
+v/cre pleg([n]) r
+v/cre aleg([n]) r
+
+v/read pleg [feV] ! ! -/*/
+v/read aleg [fabsL] ! ! -/*/
+
+sigma wleg=1239.8419/pleg
+
+*** implement model of doc-992
+*** for ~30m absorption length
+sigma c1=1/aleg
+sigma c2=7e-3/(wleg/200)**4
+sigma c=c1+c2
+sigma afix=1/c
+
+f = nuwa.vec
+
+v/cre pnuwa([n]) r
+v/cre anuwa([n]) r
+
+v/read pnuwa,anuwa [f] ! ! -/*/
+
+ZONE 1 1
+OPT LOGY
+NULL 1.5 6.5 10 1e5
+
+COLOR 1 0 0 0
+ set mtyp 20;graph 314 pleg aleg p
+COLOR 1 0 0 1
+ set mtyp 20;graph 314 pleg afix p
+
+COLOR 1 1 0 0
+ set mtyp 24;graph 314 pnuwa anuwa p
+COLOR 1 0 0 0
+
+WAIT
+
+NULL 200 800 10 1e5
+COLOR 1 0 0 0
+ set mtyp 20;graph 314 $sigma(1239.8419/pleg) aleg p
+color 1 0 0 1
+ set mtyp 20;graph 314 $sigma(1239.8419/pleg) afix p
+COLOR 1 1 0 0
+ set mtyp 24;graph 314 $sigma(1239.8419/pnuwa) anuwa p
+COLOR 1 0 0 0
+
+WAIT
+
+OPT GRID
+
+NULL 200 320 6*10 1e3
+COLOR 1 0 0 0
+ set mtyp 20;graph 314 $sigma(1239.8419/pleg) aleg p
+color 1 0 0 1
+ set mtyp 20;graph 314 $sigma(1239.8419/pleg) afix p
+COLOR 1 1 0 0
+ set mtyp 24;graph 314 $sigma(1239.8419/pnuwa) anuwa p
+COLOR 1 0 0 0
+
+
+DONE:
+return
+******************************************
+macro convert 1='NONE'
+on error goto DONE
+
+*** convert wavelength (nm), absorption coefficient(cm) table
+*** to momentum (eV), absorption length(cm) table
+
+vnin = [1]
+if [1]='NONE' then
+	MESS WATER#CONVERT Invalid input argument. should be vector file name
+	goto DONE
+endif
+vnout = 'mom_abslen_'//[vnin]
+
+v/read wl,ac [1] ! ! -/*/
+
+*** convert to eV and meters
+sigma p=1239.8419/wl
+sigma al=1/ac
+
+*** order from low to high momentum
+sigma op=order(p,p)
+sigma oa=order(al,p)
+
+v/write op,oa [vnout] '(2(1x,f12.6))'
+shell ls -lrt [vnout]
+
+DONE:
+return
+********************
+macro plots
+on error goto DONE
+
+exec util#mkps absorption_coeff_data
+exec water#go ! 1 12 DATA
+
+exec util#mkps absorption_coeff_with_fake
+exec water#go ! 1 12 FAKE
+
+exec util#mkps absorption_coeff_with_fake_and_rayleigh
+exec water#go ! 1 12 RAYLEIGH
+
+exec util#mkps absorption_coeff_with_all
+exec water#go ! 1 12 ALL
+
+close 4
+
+
+DONE:
+return
+***************************************
+macro go 1='COEFF' 2='-1' 3='99' 4='ALL'
+on error goto DONE
+
+*** plot absorption coefficient for water
+*** from data. Also show G4dyb assumptions,
+*** rayleigh scattering and 'fake' data from 
+*** a model of absorption
+*** arg1 = COEFF or LENGTH to plot absorption coefficient or length
+*   arg2,3 = 1st,last reference data to plot. see vector SHOW also.
+*   arg4 = 'ALL' = plot reference data, G4dyb, rayleigh, fake
+*          'FAKE'= plot reference data, fake data
+*          'RAYLEIGH' = plot ref. data, rayleigh, fake
+*          otherwise just reference data
+
+
+v/del *
+
+xmi = 198
+xma = 802
+ymi = 1e-5
+yma = 1e-1
+
+
+*** rayleigh scattering curve from Kevin
+v/read wlr,rl rayleigh.vec ! ! -/*/
+sigma rl=10*rl
+
+*** decide whether to plot absorption coeff
+*** or absorption length
+Length = 0
+if [1]='LENGTH' then
+	yl = 'Absorption length (cm)'
+	tmp = 1/[ymi]
+	ymi = 1/[yma]
+	yma = [tmp]
+	Length = 1
+else
+	yl = 'Absorption coefficient (1/cm)'
+	sigma rl=1./rl
+endif
+
+
+*** names of references
+l1 = 'Sogandares and Fry, 1997'
+l2 = 'Pope and Fry, 1997'
+l3 = 'Querry et al, 1991'
+l4 = 'Quickenden and Irvin, 1980'
+l5 = 'Tam and Patel, 1979'
+l6 = 'Querry, Cary and Waring, 1978'
+l7 = 'Kopelevich, 1976'
+l8 = 'Palmer and Williams, 1974'
+l9 = 'Sullivan, 1963'
+l10= 'PopeFry, QuickendenIrvin & Sullivan'
+l11= 'Quickenden and Irvin, Purity 1'
+l12= 'Quickenden and Irvin, Purity 2'
+l13= 'Quickenden and Irvin, Purity 4'
+
+
+nw = 13
+iw1 = 1
+iw2 = [nw]
+if [2]>[iw1] then ; iw1 = [2] ;endif
+if [3]<[iw2] then ; iw2 = [3] ;endif
+
+*** if show(i) = 0, then data from i^th reference
+*** will NOT be plotted
+v/cre show([nw]) r 9*1 0 3*1
+
+
+exec ad#nice
+opt logy
+OPT TIC
+
+
+COLOR 1 0 0 0
+null [xmi] [xma] [ymi] [yma]
+x1 = 0.223*([xma]-[xmi])+[xmi]
+x2 = 0.630*([xma]-[xmi])+[xmi]
+dy = 1.35
+y1 = [yma]/[dy]
+ATITLE 'Wavelength (nm)' [yl] ! 222
+
+ipt = 19
+j = 0
+* do iw = [iw1],[iw2]
+do iw = 1,[nw]
+	x = wl[iw]
+	y = ab[iw]
+	vn= abs[iw].vec
+	v/read [x],[y] [vn] ! ! -/*/
+
+	k = show([iw])
+	if [k] then ; else; MESS WATER#GO DO NOT PLOT [l[iw]] DATA ;endif
+
+	if [iw1].le.[iw] .and. [iw].le.[iw2] .and. [k].ne.0 then
+		j = [j]+1
+		exec water#setcol [j]
+		ipt = [ipt]+1 ; if [ipt]>31 then ; ipt = 20;endif;set mtyp [ipt]
+		if [Length] then
+			graph $VLEN([x],1) [x] $sigma(1/[y]) p
+		else
+			graph $VLEN([x],1) [x] [y] p
+		endif
+		key [x1] [y1] [ipt] [l[iw]]
+		y1 = [y1]/[dy]
+	endif
+
+
+	COLOR 1 0 0 0
+enddo
+
+
+*** shift key to different part of plot
+x1 = [x2]
+y1 = 3e-4
+
+*** plot other stuff?
+if [4]='FAKE' then ; goto FAKE ; endif
+if [4]='RAYLEIGH' then ; goto RAYLEIGH ;endif
+if [4]<>'ALL' then ; goto DONE ;endif
+
+
+
+**** G4dyb plots
+iw = [j]+1
+exec water#setcol [iw]
+ipt = [ipt]+1 ; if [ipt]>31 then ; ipt = 20;endif;set mtyp [ipt]
+exec water#g4dyb [1] 2.5
+key [x1] [y1] [ipt] 'G4dyb release 2.5'
+y1 = [y1]/[dy]
+
+
+iw = [iw]+1
+exec water#setcol [iw]
+ipt = [ipt]+1 ; if [ipt]>31 then ; ipt = 20;endif;set mtyp [ipt]
+exec water#g4dyb [1] 2.4
+key [x1] [y1] [ipt] 'G4dyb release 2.4'
+y1 = [y1]/[dy]
+
+iw = [iw]+1
+exec water#setcol [iw]
+ipt = [ipt]+1 ; if [ipt]>31 then ; ipt = 20;endif;set mtyp [ipt]
+exec water#g4dyb [1] 55
+key [x1] [y1] [ipt] 'G4dyb 55m abs len'
+y1 = [y1]/[dy]
+
+
+*** Rayleigh scattering
+RAYLEIGH:
+iw = [iw]+1
+exec water#setcol [iw]
+ipt = [ipt]+1 ; if [ipt]>31 then ; ipt = 20;endif;set mtyp [ipt]
+x = wlr
+y = rl
+SET DMOD 2
+if [Length] then
+	graph $VLEN([x],1) [x] $sigma(1/[y]) pl
+else
+	graph $VLEN([x],1) [x] [y] pl
+endif
+SET DMOD 1
+key [x1] [y1] [ipt] 'Rayleigh scattering'
+y1 = [y1]/[dy]
+
+
+FAKE:
+COLOR 1 0 0 0
+
+**** show 'fake' results. Get results from file if
+**** they already exist
+
+set dmod 2
+vn = pf_qi_s_fake_007.vec
+if $FEXIST([vn]) then
+	v/del wavel,coeff
+	v/read wavel,coeff [vn]
+	set mtyp 1
+	graph $VLEN(wavel,1) wavel coeff l
+else
+	exec water#faker wl10 ab10 0.7e-2 ! [vn]
+endif
+KEY [x1] [y1] 2 'Fake (30.0m, 473nm)' ! L
+y1 = [y1]/[dy]
+
+
+COLOR 1 1 0 0
+set dmod 2
+vn = pf_qi_s_fake_003.vec
+if $FEXIST([vn]) then
+	v/del wavel,coeff
+	v/read wavel,coeff [vn]
+	set mtyp 1
+	graph $VLEN(wavel,1) wavel coeff l
+else
+	exec water#faker wl10 ab10 0.3e-2 ! [vn]
+endif
+KEY [x1] [y1] 2 'Fake (53.4m, 435nm)' ! L
+y1 = [y1]/[dy]
+COLOR 1 0 0 0
+
+*** this is maximum absorption length in this model
+COLOR 1 0 0 1
+set dmod 2
+vn = pf_qi_s_fake_000.vec
+if $FEXIST([vn]) then
+	v/del wavel,coeff
+	v/read wavel,coeff [vn]
+	set mtyp 1
+	graph $VLEN(wavel,1) wavel coeff l
+else
+	exec water#faker wl10 ab10 1e-20 ! [vn]
+endif
+KEY [x1] [y1] 2 'Fake (226m, 417nm)' ! L
+y1 = [y1]/[dy]
+COLOR 1 0 0 0
+
+DONE:
+return
+**********************************************
+macro setcol 1='1'
+on error goto DONE
+
+i = [1]
+i = mod([i]-1,10)+1
+COLOR 1 0 0 0
+if     [i]=2 then ; COLOR 1 1    0      0
+elseif [i]=3 then ; COLOR 1 0    0      1
+elseif [i]=4 then ; COLOR 1 0.   0.8    0.6
+elseif [i]=6 then ; COLOR 1 0.8  0.4    0.4
+elseif [i]=5 then ; COLOR 1 1    0.4    0.6
+elseif [i]=7 then ; COLOR 1 1    0.2    .0
+elseif [i]=8 then ; COLOR 1 0.   0.6    .4
+elseif [i]=9 then ; COLOR 1 0.8  0.     1.0
+elseif [i]=10 then; COLOR 1 0.66 0.66   .5
+endif
+
+DONE:
+return
+******************************************
+macro g4dyb 1='COEFF' 2='2.5'
+on error goto DONE
+
+
+Length = 0
+if [1]='LENGTH' then
+	Length = 1
+else
+endif
+
+*** release_2_5
+n = 34
+
+if [2]='2.5' then
+	v/cre p([n]) r  1.55 2.034 2.068 2.103 2.139 2.177 2.216 2.256 2.298 2.341 2.386 2.433 2.481 2.532 2.585 2.640 2.697 2.757 2.820 2.885 2.954 3.026 3.102 3.181 3.265 3.353 3.446 3.545 3.649 3.760 3.877 4.002 4.136 6.20
+	v/cre al([n]) r 108   190   226   356   530   737   847   949 1127   1283   1411   2146   3872   8056   12836   177588  999999   9999999  9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999 9999999
+
+else
+
+	v/cre p([n]) r 1.55 2.034 2.068 2.103 2.139 2.177 2.216 2.256 2.298 2.341 2.386 2.433 2.481 2.532 2.585 2.640 2.697 2.757 2.820 2.885 2.954 3.026 3.102 3.181 3.265 3.353 3.446 3.545 3.649 3.760 3.877 4.002 4.136 6.20
+	v/cre al([n]) r  108   186.192   220.428   341.766   495.396   666.684   750.006   818.208  931.014   1018.87   1080   1421.06   1928.56   2454.57   2571.43   2842.13 2842.13   3000.02   2842.13   2842.13   2571.43   2454.57   2250.02   2000   1799.98   1620   1539   1458   1323   1188   1053   945  783  540 
+
+	if [2]='55' then
+		sigma al=al*55/30
+	endif
+
+endif
+
+if [Length] then
+	graph [n] $sigma(1240/p) al pl
+else
+	graph [n] $sigma(1240/p) $sigma(1/al) pl
+endif
+
+
+
+
+
+DONE:
+return
+***************************
+macro faker 1='x' 2='y' 3='1e-3' 4='200' 5='NONE'
+on error goto DONE
+
+***
+
+wl= [1]
+ac= [2]
+n = $VLEN([wl],1)
+m = [n]-1
+sc0 = [3]
+wl0 = [4]
+outvn = [5]
+
+m = [n]-1
+
+xmi = 200
+xma = 800
+dx  = 1
+
+nmax = int(([xma]-[xmi])/[dx]+1)
+if $VEXIST(coeff) then ; v/del coeff;endif; v/cre coeff([nmax]) r
+if $VEXIST(wavel) then ; v/del wavel;endif; v/cre wavel([nmax]) r
+nused = 0
+
+
+tcmin = 1e20
+wlmin = -1
+x = [xmi]-[dx]
+while [x]<[xma] do
+	x = [x]+[dx]
+** scattering coefficient
+	sc = $sigma([sc0]/(([x]/[wl0])**4))
+
+
+	k1 = -1
+	k2 = -1
+	do i = 1,[m]
+		j = [i]+1
+		wli = [wl]([i])
+		wlj = [wl]([j])
+		if [wli]<[wlj] then
+			if [wli].le.[x] .and. [x].le.[wlj] then
+				k1 = [i]
+				k2 = [j]
+			endif
+		else
+			if [wlj].le.[x] .and. [x].le.[wli] then
+				k1 = [j]
+				k2 = [i]
+			endif
+		endif
+
+		if [k1]>0 then ; goto OUT ;endif
+	enddo
+	OUT:
+	if [k1]>0 then
+		wl1 = [wl]([k1])
+		wl2 = [wl]([k2])
+		ac1 = [ac]([k1])
+		ac2 = [ac]([k2])
+		bc = ([ac2]-[ac1])*([x]-[wl1])/([wl2]-[wl1])+[ac1]
+
+	else
+		bc = 1.e-20
+	endif
+	
+	tc = ([sc]+[bc])
+	if [tc]<[tcmin] then ; tcmin = [tc] ; wlmin = [x];endif
+*	MESS x [x] sc [sc] bc [bc] tc [tc] wl1 [wl1] wl2 [wl2] ac1 [ac1] ac2 [ac2]
+*	WAIT
+
+** save all points in vector for plotting
+	nused = [nused]+1
+	if [nused].le.[nmax] then
+		v/inp coeff([nused]:[nused]) [tc]
+		v/inp wavel([nused]:[nused]) [x]
+	endif
+
+*	key [x] [tc] 20
+endwhile
+
+attlen = 1/[tcmin]/1e2
+
+MESS Minimum atten coeff [tcmin] 1/cm at [wlmin] nm gives max att len of [attlen] meters
+
+
+
+** plot vector 
+set mtyp 1
+graph [nused] wavel coeff l
+
+if [outvn]<>'NONE' then
+	v/write wavel,coeff [outvn] '(2(1x,f10.6))'
+	shell ls -lrt [outvn]
+endif
+
+DONE:
+return
+***********************************
+macro abcVlmax
+on error goto DONE
+
+*** plot values of absorption coefficient at 200nm
+*** vs maximum absorption length or wavelength of maximum
+*** using PAW > exec water#faker wl10 ab10 .004
+
+n = 13
+v/cre abc([n])  r 0.0005 0.001 0.003 0.004 0.005 0.007 0.008 0.010 0.012 0.013 0.014 0.015 0.020
+v/cre lmax([n]) r 141.55 104.0	53.4  43.15 37.10 29.96 27.36 23.52 20.70 19.58 18.57 17.66 14.18
+v/cre wmax([n]) r 418    428   435   435   468   473   475   485   485   490   490   490   490
+
+
+
+exec ad#nice
+set ndvx 2020
+set ndvy 2020
+OPT TIC
+SET DMOD 1
+OPT LOGX
+OPT LOGY
+set xval .5
+set yval .2
+set ylab 1.2
+set gsiz .4
+
+
+TITLE 'Maximum absorption length of model'
+
+OPT LOGX
+OPT LOGY
+
+zone 1 1
+null 9.9 201 0.0004 0.022
+set mtyp 20
+graph [n] lmax abc  lp
+
+atitle  'Maximum absorption length (m)' 'Absorption Coefficient of impure water at 200 nm (1/cm)' ! 222
+
+WAIT
+
+
+opt liny
+null  9.9 201 400 500
+graph [n] lmax wmax lp
+atitle 'Maximum absorption length (m)' 'Wavelength of corresponding to maximum absorption length (nm)' ! 222
+
+
+DONE:
+return
